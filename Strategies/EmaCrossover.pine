@@ -1,0 +1,116 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © akshaydagar98
+
+//@version=4
+strategy("macd and hashi",process_orders_on_close=true,initial_capital=1500)
+
+// Make input options that configure backtest date range
+startDate = input(title="Start Date", type=input.integer,
+     defval=1, minval=1, maxval=31)
+startMonth = input(title="Start Month", type=input.integer,
+     defval=1, minval=1, maxval=12)
+startYear = input(title="Start Year", type=input.integer,
+     defval=2018, minval=1800, maxval=2100)
+
+endDate = input(title="End Date", type=input.integer,
+     defval=31, minval=1, maxval=31)
+endMonth = input(title="End Month", type=input.integer,
+     defval=7, minval=1, maxval=12)
+endYear = input(title="End Year", type=input.integer,
+     defval=2021, minval=1800, maxval=2100)
+
+// STEP 2:
+// Look if the close time of the current bar
+// falls inside the date range
+inDateRange = (time >= timestamp(syminfo.timezone, startYear,
+         startMonth, startDate, 0, 0)) and
+     (time < timestamp(syminfo.timezone, endYear, endMonth, endDate, 0, 0))
+
+//bollinger:
+
+mdl = sma(close, 20) // 20 trading days simple moving average
+dev = stdev(close, 20) // 20 trading days standard deviation
+
+upr = mdl + 2*dev // upper_band 20 trading days moving average plus 2 standard deviation
+lwr = mdl - 2*dev // lower_band 20 trading days moving average minus 2 standard deviation
+
+//rsi:
+
+rsiSource = input(title="RSI Source", type=input.source, defval=close)
+rsiLength = input(title="RSI Length", type=input.integer, defval=14)
+
+rsiOverbought = input(title="RSI Overbought Level", type=input.integer, defval=60)
+rsiOversold = input(title="RSI Oversold Level", type=input.integer, defval=40)
+
+rsiValue = rsi(rsiSource, rsiLength)
+
+
+//ema:
+ema9=ema(close,9)
+ema20=ema(close,20)
+
+//macd:
+[macdLine, signalLine, histLine] = macd(close, 12, 26, 9)
+hist=macdLine-signalLine
+
+//supertrend
+Periods = input(title="ATR Period", type=input.integer, defval=10)
+Source = input(hl2, title="Source")
+Multiplier = input(title="ATR Multiplier", type=input.float, step=0.1, defval=3.0)
+
+atr=  atr(Periods) 
+
+
+up=Source-(Multiplier*atr)
+up1 = nz(up[1],up)
+up := close[1] > up1 ? max(up,up1) : up
+
+dn=Source+(Multiplier*atr)
+dn1 = nz(dn[1], dn)
+dn := close[1] < dn1 ? min(dn, dn1) : dn
+
+trend = 1
+trend := nz(trend[1], trend)
+trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+
+
+//heikin ashi
+ha_t = heikinashi(syminfo.tickerid)
+ha_open = security(ha_t, timeframe.period, open)
+ha_high = security(ha_t, timeframe.period, high)
+ha_low = security(ha_t, timeframe.period, low)
+ha_close = security(ha_t, timeframe.period, close)
+
+//adx
+len = input(14, minval=1, title="DI Length")
+lensig = input(14, title="ADX Smoothing", minval=1, maxval=50)
+[plus, minus, adx] = dmi(len, lensig)
+
+
+////////////////////////////////////////////////////////////////////////////
+
+var entryPrice = 0.0
+take_profit = 10.0
+stop_percent = -2.0
+var current_profit=0.0
+var in_position=false
+
+
+if(entryPrice>0)
+    current_profit := ((close - entryPrice)/entryPrice)*100
+
+
+long_entry_signal = crossover(ema9,ema20) and inDateRange
+long_exit_signal =  crossunder(ema9,ema20) and inDateRange
+
+short_entry_signal = crossunder(ema9,ema20) and inDateRange
+short_exit_signal = crossover(ema9,ema20) and inDateRange
+
+
+strategy.entry("Long", strategy.long, strategy.equity/close, when=long_entry_signal)
+
+
+
+strategy.close("Long",when=long_exit_signal)
+//strategy.exit("Long", stop=entryPrice+((stop_percent/100.0)*entryPrice))
+
